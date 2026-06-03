@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Car Logbook</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Material Web (Material Design 3) components -->
+  <script type="module">
+    import 'https://esm.run/@material/web@2/all.js';
+    import { styles as typescale } from 'https://esm.run/@material/web@2/typography/md-typescale-styles.js';
+    document.adoptedStyleSheets.push(typescale.styleSheet);
+  </script>
+</head>
+<body>
+  <header class="app-bar">
+    <span class="app-title"><md-icon>directions_car</md-icon> Car Logbook</span>
+  </header>
+
+  <md-tabs id="tabs" class="nav-tabs">
+    <md-secondary-tab><md-icon slot="icon">summarize</md-icon>Report</md-secondary-tab>
+    <md-secondary-tab><md-icon slot="icon">route</md-icon>Trips</md-secondary-tab>
+    <md-secondary-tab><md-icon slot="icon">my_location</md-icon>Checkpoints</md-secondary-tab>
+    <md-secondary-tab><md-icon slot="icon">place</md-icon>Places</md-secondary-tab>
+    <md-secondary-tab><md-icon slot="icon">label</md-icon>Tags</md-secondary-tab>
+  </md-tabs>
+
+  <main>
+    <!-- REPORT -->
+    <section id="report" class="panel active">
+      <h2 class="md-typescale-headline-small">Mileage report</h2>
+      <form id="report-filters" class="filters">
+        <md-outlined-text-field label="From" type="date" name="from"></md-outlined-text-field>
+        <md-outlined-text-field label="To" type="date" name="to"></md-outlined-text-field>
+        <div class="field"><span class="field-label">Tags</span><span id="report-tag-filter" class="tag-filter"></span></div>
+        <md-filled-button type="submit"><md-icon slot="icon">filter_alt</md-icon>Apply</md-filled-button>
+      </form>
+      <div id="report-output"></div>
+    </section>
+
+    <!-- TRIPS -->
+    <section id="trips" class="panel">
+      <h2 class="md-typescale-headline-small">Trips</h2>
+      <form id="trip-filters" class="filters">
+        <md-outlined-text-field label="From" type="date" name="from"></md-outlined-text-field>
+        <md-outlined-text-field label="To" type="date" name="to"></md-outlined-text-field>
+        <div class="field"><span class="field-label">Tags</span><span id="trip-tag-filter" class="tag-filter"></span></div>
+        <md-filled-button type="submit">Filter</md-filled-button>
+        <md-outlined-button type="button" id="evaluate-btn"><md-icon slot="icon">bolt</md-icon>Re-evaluate</md-outlined-button>
+        <md-filled-button type="button" id="merge-btn" style="display:none"><md-icon slot="icon">merge</md-icon>Merge<span id="merge-count"></span></md-filled-button>
+      </form>
+
+      <md-outlined-card class="creator">
+        <details>
+          <summary class="md-typescale-title-medium">Create trip manually</summary>
+          <form id="trip-create" class="grid">
+            <md-outlined-select label="Start checkpoint" name="start_checkpoint_id" required></md-outlined-select>
+            <md-outlined-select label="End checkpoint" name="end_checkpoint_id" required></md-outlined-select>
+            <md-outlined-text-field label="Note" name="note"></md-outlined-text-field>
+            <div class="field"><span class="field-label">Tags</span><span id="trip-create-tags" class="tag-filter"></span></div>
+            <md-filled-button type="submit">Create</md-filled-button>
+          </form>
+        </details>
+      </md-outlined-card>
+
+      <div id="trips-list"></div>
+    </section>
+
+    <!-- CHECKPOINTS -->
+    <section id="checkpoints" class="panel">
+      <h2 class="md-typescale-headline-small">Checkpoints</h2>
+      <md-outlined-card class="creator">
+        <details open>
+          <summary class="md-typescale-title-medium">Add checkpoint</summary>
+          <form id="checkpoint-create" class="grid">
+            <md-outlined-text-field label="Time" type="datetime-local" name="time"></md-outlined-text-field>
+            <md-outlined-text-field label="Latitude" type="number" step="any" name="latitude" required></md-outlined-text-field>
+            <md-outlined-text-field label="Longitude" type="number" step="any" name="longitude" required></md-outlined-text-field>
+            <md-outlined-text-field label="Mileage" type="number" step="any" name="mileage" required></md-outlined-text-field>
+            <md-filled-button type="submit"><md-icon slot="icon">add</md-icon>Add</md-filled-button>
+          </form>
+        </details>
+      </md-outlined-card>
+
+      <md-outlined-card class="creator">
+        <details>
+          <summary class="md-typescale-title-medium">Bulk import (TSV)</summary>
+          <div class="grid import-grid">
+            <p class="muted">Paste tab-separated rows in the order <code>created · lat · lng · mileage · battery · range</code>. Decimal commas and a header row are accepted; rows without coordinates or mileage are skipped.</p>
+            <input type="file" id="import-file" accept=".tsv,.txt,text/tab-separated-values,text/plain" />
+            <textarea id="import-text" rows="8" spellcheck="false" placeholder="created&#9;lat&#9;lng&#9;mileage&#9;battery&#9;range"></textarea>
+            <md-filled-button type="button" id="import-btn"><md-icon slot="icon">upload</md-icon>Import</md-filled-button>
+            <div id="import-result"></div>
+          </div>
+        </details>
+      </md-outlined-card>
+
+      <div id="checkpoints-list"></div>
+    </section>
+
+    <!-- PLACES -->
+    <section id="places" class="panel">
+      <h2 class="md-typescale-headline-small">Places</h2>
+      <md-outlined-card class="creator">
+        <details>
+          <summary class="md-typescale-title-medium">Add place</summary>
+          <form id="place-create" class="grid">
+            <md-outlined-text-field label="Name" name="name" required></md-outlined-text-field>
+            <md-outlined-text-field label="Latitude" type="number" step="any" name="latitude" required></md-outlined-text-field>
+            <md-outlined-text-field label="Longitude" type="number" step="any" name="longitude" required></md-outlined-text-field>
+            <md-outlined-text-field label="Radius (m)" type="number" step="any" name="radius" value="100" required></md-outlined-text-field>
+            <md-outlined-text-field label="Dwell duration (min)" type="number" step="any" name="duration_min" value="30" required></md-outlined-text-field>
+            <label class="checkbox"><md-checkbox name="inherit_last_trip_tags" touch-target="wrapper"></md-checkbox> Inherit previous trip's tags (e.g. "home")</label>
+            <div class="field"><span class="field-label">Tags</span><span id="place-create-tags" class="tag-filter"></span></div>
+            <md-filled-button type="submit"><md-icon slot="icon">add_location</md-icon>Add place</md-filled-button>
+          </form>
+        </details>
+      </md-outlined-card>
+      <div id="places-list"></div>
+    </section>
+
+    <!-- TAGS -->
+    <section id="tags" class="panel">
+      <h2 class="md-typescale-headline-small">Tags</h2>
+      <form id="tag-create" class="filters">
+        <md-outlined-text-field label="Name" name="name" required></md-outlined-text-field>
+        <label class="field"><span class="field-label">Color</span><input name="color" type="color" value="#3b82f6" /></label>
+        <md-filled-button type="submit"><md-icon slot="icon">add</md-icon>Add tag</md-filled-button>
+      </form>
+      <div id="tags-list"></div>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

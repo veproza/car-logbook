@@ -1,0 +1,16 @@
+{
+  "name": "car-logbook",
+  "version": "1.0.0",
+  "description": "Car logbook for accounting - track business vs personal mileage via checkpoints, trips, tags and places.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2"
+  }
+}

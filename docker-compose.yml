@@ -1,0 +1,15 @@
+services:
+  car-logbook:
+    build: .
+    image: car-logbook
+    ports:
+      - "3000:3000"
+    environment:
+      # Override defaults here if needed (PORT, EVAL_INTERVAL_MS, DB_PATH).
+      PORT: "3000"
+    volumes:
+      - logbook-data:/data
+    restart: unless-stopped
+
+volumes:
+  logbook-data:
