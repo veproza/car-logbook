@@ -65,13 +65,44 @@ checkpoints.post('/', (req, res) => {
     return res.status(400).json({ error: 'latitude, longitude and mileage are required numbers' });
   }
 
+  // Reject out-of-sync intermediate pings: accept only when both the odometer
+  // and the position changed versus the previous checkpoint in time.
+  const prev = prevCheckpoint(time);
+  if (!bothChanged(prev, { latitude, longitude, mileage })) {
+    return res.status(200).json({
+      skipped: true,
+      reason: 'mileage and location must both differ from the previous checkpoint',
+      checkpoint: null,
+      tripsCreated: 0,
+    });
+  }
+
   const metadata = b.metadata == null ? null : JSON.stringify(b.metadata);
   const { lastInsertRowid } = insertStmt.run({ time, latitude, longitude, mileage, metadata });
 
   const tripsCreated = evaluateAutoTrips();
   const row = db.prepare('SELECT * FROM checkpoints WHERE id = ?').get(lastInsertRowid);
-  res.status(201).json({ checkpoint: decode(row), tripsCreated });
+  res.status(201).json({ checkpoint: decode(row), tripsCreated, skipped: false });
 });
+
+// The most recent checkpoint at or before `time` — the "previous" reading.
+function prevCheckpoint(time) {
+  return db
+    .prepare('SELECT latitude, longitude, mileage FROM checkpoints WHERE time <= ? ORDER BY time DESC, id DESC LIMIT 1')
+    .get(time);
+}
+
+// True when the candidate is a real move versus the previous checkpoint: BOTH the
+// odometer and the position must have changed. The data source updates mileage and
+// location on independent ~5-min cycles, so an intermediate ping where only one
+// field advanced is a duplicate-in-disguise and is filtered out. The first-ever
+// checkpoint (no previous) is always accepted.
+function bothChanged(prev, cand) {
+  if (!prev) return true;
+  const mileageChanged = cand.mileage !== prev.mileage;
+  const locationChanged = cand.latitude !== prev.latitude || cand.longitude !== prev.longitude;
+  return mileageChanged && locationChanged;
+}
 
 // Bulk-import checkpoints from pasted TSV text. Columns (tab-separated):
 //   created  lat  lng  mileage  [battery]  [remaining range]
@@ -115,10 +146,22 @@ checkpoints.post('/bulk', (req, res) => {
     });
   });
 
+  // Apply the same both-changed filter as the single ingress, walking the rows in
+  // time order. Seed the comparison with the last checkpoint stored before the
+  // batch begins, then chain through accepted rows.
+  parsed.sort((a, b) => a.time.localeCompare(b.time));
+  let prev = parsed.length ? prevCheckpoint(parsed[0].time) : null;
+  const accepted = [];
+  let filtered = 0;
+  for (const row of parsed) {
+    if (bothChanged(prev, row)) { accepted.push(row); prev = row; }
+    else filtered++;
+  }
+
   const insertMany = db.transaction((rows) => { for (const r of rows) insertStmt.run(r); });
-  insertMany(parsed);
-  const tripsCreated = parsed.length ? evaluateAutoTrips() : 0;
-  res.status(201).json({ imported: parsed.length, skipped: errors.length, tripsCreated, errors });
+  insertMany(accepted);
+  const tripsCreated = accepted.length ? evaluateAutoTrips() : 0;
+  res.status(201).json({ imported: accepted.length, filtered, skipped: errors.length, tripsCreated, errors });
 });
 
 // Prune redundant stationary checkpoints: any checkpoint showing no significant

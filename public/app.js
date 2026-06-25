@@ -355,7 +355,8 @@ $('#checkpoint-create').onsubmit = async (e) => {
       },
     });
     f.reset();
-    toast(r.tripsCreated ? `Checkpoint added · ${r.tripsCreated} trip(s) generated` : 'Checkpoint added');
+    if (r.skipped) toast('Skipped: mileage and location must both differ from the previous checkpoint', true);
+    else toast(r.tripsCreated ? `Checkpoint added · ${r.tripsCreated} trip(s) generated` : 'Checkpoint added');
     renderCheckpoints();
   } catch (err) { toastError(err, 'Save failed'); }
 };
@@ -378,6 +379,7 @@ $('#import-btn').addEventListener('click', () => runAction(async () => {
   if (!tsv.trim()) { toast('Paste TSV or choose a file first', true); return; }
   const r = await api('/checkpoints/bulk', { method: 'POST', body: { tsv } });
   const parts = [`Imported ${r.imported}`];
+  if (r.filtered) parts.push(`filtered ${r.filtered}`);
   if (r.skipped) parts.push(`skipped ${r.skipped}`);
   if (r.tripsCreated) parts.push(`${r.tripsCreated} trip(s) generated`);
   toast(parts.join(' · '));
@@ -389,7 +391,7 @@ function renderImportResult(r) {
   const box = $('#import-result');
   box.innerHTML = '';
   box.append(el('p', { className: 'muted' },
-    `Imported ${r.imported} · skipped ${r.skipped}${r.tripsCreated ? ` · ${r.tripsCreated} trip(s) generated` : ''}`));
+    `Imported ${r.imported} · filtered ${r.filtered || 0} (unchanged mileage or location) · skipped ${r.skipped}${r.tripsCreated ? ` · ${r.tripsCreated} trip(s) generated` : ''}`));
   if (!r.errors?.length) return;
   const list = el('ul', { className: 'import-errors' });
   for (const e of r.errors) list.append(el('li', {}, `line ${e.line}: ${e.reason}`));
