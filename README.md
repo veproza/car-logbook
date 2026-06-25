@@ -63,6 +63,28 @@ access (the server does not).
 > `-v "$PWD/data:/data"`), make sure it's writable by the container's `node` user
 > (uid 1000), otherwise SQLite can't create the database file.
 
+### Updating
+
+The Compose service **builds** the image from the GitHub repo (`build.context` is the
+git URL) and tags it locally as `car-logbook`. That name is just a local tag — the image
+is **not** published to any registry. So to update, rebuild from git; do **not** pull:
+
+```bash
+docker compose up -d --build      # re-clones main, rebuilds, restarts
+```
+
+To force a clean rebuild (ignore the layer cache):
+
+```bash
+docker compose build --pull --no-cache
+docker compose up -d
+```
+
+> ⚠️ Don't run `docker compose pull` for this stack. Because the image has no registry
+> prefix, Docker tries to fetch `docker.io/library/car-logbook` from Docker Hub and fails
+> with `pull access denied ... repository does not exist`. This is expected — the image is
+> built locally, not pulled. (It's not a DNS problem.)
+
 ## How auto-trip generation works
 
 Dwells are detected both when a checkpoint is ingested and on a periodic timer (a
