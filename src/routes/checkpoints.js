@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { evaluateAutoTrips } from '../autoTrips.js';
-import { isWithin } from '../util/geo.js';
+import { isWithin, distanceMeters } from '../util/geo.js';
 
 export const checkpoints = Router();
 
@@ -119,6 +119,37 @@ checkpoints.post('/bulk', (req, res) => {
   insertMany(parsed);
   const tripsCreated = parsed.length ? evaluateAutoTrips() : 0;
   res.status(201).json({ imported: parsed.length, skipped: errors.length, tripsCreated, errors });
+});
+
+// Prune redundant stationary checkpoints: any checkpoint showing no significant
+// change from the previous surviving one — less than `meters` (default 10) of
+// movement AND an unchanged odometer — is removed. Checkpoints referenced as a
+// trip's start/end are always kept (meaningful boundaries, FK-protected).
+checkpoints.post('/prune', (req, res) => {
+  const meters = num(req.body?.meters) ?? 10;
+
+  const all = db.prepare('SELECT id, latitude, longitude, mileage FROM checkpoints ORDER BY time ASC, id ASC').all();
+  const boundary = new Set();
+  for (const r of db.prepare('SELECT start_checkpoint_id AS s, end_checkpoint_id AS e FROM trips').all()) {
+    boundary.add(r.s); boundary.add(r.e);
+  }
+
+  const toDelete = [];
+  let kept = null;
+  for (const c of all) {
+    if (kept && !boundary.has(c.id) &&
+        c.mileage === kept.mileage &&
+        distanceMeters(kept.latitude, kept.longitude, c.latitude, c.longitude) < meters) {
+      toDelete.push(c.id); // redundant; keep comparing against the same reference
+      continue;
+    }
+    kept = c;
+  }
+
+  const del = db.prepare('DELETE FROM checkpoints WHERE id = ?');
+  db.transaction((ids) => { for (const id of ids) del.run(id); })(toDelete);
+
+  res.json({ pruned: toDelete.length, remaining: all.length - toDelete.length });
 });
 
 checkpoints.delete('/:id', (req, res) => {

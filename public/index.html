@@ -105,6 +105,11 @@
         </details>
       </md-outlined-card>
 
+      <div class="filters">
+        <md-outlined-button type="button" id="prune-btn"><md-icon slot="icon">cleaning_services</md-icon>Prune stationary</md-outlined-button>
+        <span class="muted">Removes checkpoints with &lt;10 m movement and no odometer change since the previous one.</span>
+      </div>
+
       <div id="checkpoints-list"></div>
     </section>
 

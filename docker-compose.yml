@@ -1,6 +1,8 @@
 services:
   car-logbook:
-    build: .
+    build:
+      context: https://github.com/veproza/car-logbook.git
+      network: host
     image: car-logbook
     ports:
       - "3000:3000"
@@ -8,8 +10,5 @@ services:
       # Override defaults here if needed (PORT, EVAL_INTERVAL_MS, DB_PATH).
       PORT: "3000"
     volumes:
-      - logbook-data:/data
+      - /root/car-logbook:/data
     restart: unless-stopped
-
-volumes:
-  logbook-data:

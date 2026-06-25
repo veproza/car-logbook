@@ -302,6 +302,13 @@ $('#checkpoint-create').onsubmit = async (e) => {
   } catch (err) { toastError(err, 'Save failed'); }
 };
 
+$('#prune-btn').addEventListener('click', () => runAction(async () => {
+  if (!confirm('Remove checkpoints with <10 m movement and no odometer change since the previous one?\nTrip start/end checkpoints are kept.')) return;
+  const r = await api('/checkpoints/prune', { method: 'POST' });
+  toast(r.pruned ? `Pruned ${r.pruned} · ${r.remaining} remaining` : 'Nothing to prune');
+  renderCheckpoints();
+}, 'Prune failed'));
+
 // Load a chosen file into the textarea for review before importing.
 $('#import-file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
