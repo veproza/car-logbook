@@ -45,6 +45,7 @@ async function runAction(fn, prefix = 'Action failed') {
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
 const km = (n) => `${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
+const coord = (v) => Number(v).toFixed(4); // display lat/lng to 4 decimal places
 const toIso = (localValue) => (localValue ? new Date(localValue).toISOString() : undefined);
 
 // Material Web button factory.
@@ -227,7 +228,7 @@ $('#tag-create').onsubmit = async (e) => {
 let pendingTripStart = null; // a checkpoint chosen as the start of a new trip
 TAB_LOADERS.checkpoints = renderCheckpoints;
 async function renderCheckpoints() {
-  const rows = await api('/checkpoints');
+  const [rows, trips] = await Promise.all([api('/checkpoints'), api('/trips')]);
   const list = $('#checkpoints-list');
   list.innerHTML = '';
   // A pending start may have been deleted/consumed; drop it if it's gone.
@@ -242,7 +243,9 @@ async function renderCheckpoints() {
       cancel));
   }
 
-  const trs = rows.map((c) => {
+  const { laneCount, cover } = buildTripCoverage(rows, trips);
+
+  const trs = rows.map((c, i) => {
     const del = button('Delete', { variant: 'text', icon: 'delete', danger: true, onclick: () => runAction(async () => {
       await api(`/checkpoints/${c.id}`, { method: 'DELETE' }); toast('Checkpoint deleted'); renderCheckpoints();
     }, 'Delete failed') });
@@ -251,15 +254,70 @@ async function renderCheckpoints() {
     if (trip) actions.append(trip);
     actions.append(mapButton(c.latitude, c.longitude, `Checkpoint #${c.id}`), del);
     return el('tr', { className: pendingTripStart?.id === c.id ? 'pending-start' : '' },
+      gutterCell(i, laneCount, cover),
       el('td', {}, fmtDate(c.time)),
-      el('td', {}, String(c.latitude)),
-      el('td', {}, String(c.longitude)),
+      el('td', {}, coord(c.latitude)),
+      el('td', {}, coord(c.longitude)),
       el('td', {}, km(c.mileage)),
       el('td', {}, c.place ? placePill(c.place.name, 'place') : el('span', { className: 'muted' }, '—')),
       el('td', {}, actions),
     );
   });
-  list.append(dataTable(['Time', 'Latitude', 'Longitude', 'Mileage', 'Place', ''], trs));
+  list.append(dataTable(['', 'Time', 'Latitude', 'Longitude', 'Mileage', 'Place', ''], trs));
+}
+
+// Stable, well-spaced color per trip id (golden-angle hues).
+const colorForTrip = (id) => `hsl(${Math.round((id * 137.508) % 360)} 65% 60%)`;
+
+// Assigns each trip to a lane (parallel column) so trips that share a boundary
+// checkpoint or overlap in time get separate vertical lines, and returns the
+// covered row span (top = latest/end row, bot = earliest/start row) per trip.
+// `rows` is the checkpoint list ordered newest-first.
+function buildTripCoverage(rows, trips) {
+  const sorted = [...trips].sort((a, b) => a.start_time.localeCompare(b.start_time) || a.id - b.id);
+  const laneTrips = []; // laneTrips[k] = trips already placed in lane k
+  for (const t of sorted) {
+    let lane = 0;
+    while (laneTrips[lane] &&
+           laneTrips[lane].some((o) => t.start_time <= o.end_time && o.start_time <= t.end_time)) {
+      lane++;
+    }
+    (laneTrips[lane] ||= []).push(t);
+    t._lane = lane;
+  }
+  const cover = [];
+  for (const t of sorted) {
+    let top = -1, bot = -1;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].time >= t.start_time && rows[i].time <= t.end_time) { if (top < 0) top = i; bot = i; }
+    }
+    if (top >= 0) cover.push({ top, bot, lane: t._lane, color: colorForTrip(t.id), id: t.id, note: t.note });
+  }
+  return { laneCount: laneTrips.length, cover };
+}
+
+// Builds the leading gutter cell for row `i`: one vertical line segment per lane
+// whose trip covers this checkpoint, with a node dot at the trip's start/end row.
+function gutterCell(i, laneCount, cover) {
+  const lanes = el('div', { className: 'cp-lanes' });
+  for (let l = 0; l < laneCount; l++) {
+    const lane = el('div', { className: 'cp-lane' });
+    const seg = cover.find((c) => c.lane === l && i >= c.top && i <= c.bot);
+    if (seg) {
+      const isTop = i === seg.top, isBot = i === seg.bot;
+      const variant = isTop && isBot ? 'cp-seg-dot' : isTop ? 'cp-seg-top' : isBot ? 'cp-seg-bot' : 'cp-seg-full';
+      const bar = el('div', { className: `cp-seg ${variant}`, title: `Trip #${seg.id}${seg.note ? ': ' + seg.note : ''}` });
+      bar.style.setProperty('--c', seg.color);
+      lane.append(bar);
+      if (isTop || isBot) {
+        const dot = el('div', { className: 'cp-node' });
+        dot.style.setProperty('--c', seg.color);
+        lane.append(dot);
+      }
+    }
+    lanes.append(lane);
+  }
+  return el('td', { className: 'cp-gutter' }, lanes);
 }
 
 // The contextual trip button for a checkpoint row (only on selectable checkpoints):

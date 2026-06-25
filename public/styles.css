@@ -219,6 +219,18 @@ td input.inline:focus { outline: none; border-bottom-color: var(--md-sys-color-p
 }
 .place-pill .pill-icon { font-size: 15px; }
 
+/* ---- checkpoint trip lines (gutter) ---- */
+td.cp-gutter { padding: 0; position: relative; width: 1px; }
+.cp-lanes { position: absolute; inset: 0; display: flex; }
+.cp-lane { position: relative; flex: 0 0 14px; }
+.cp-seg { position: absolute; left: 50%; transform: translateX(-50%); width: 4px; background: var(--c); }
+/* In the newest-first table, a trip's end is the top row and its start the bottom. */
+.cp-seg-full { top: 0; bottom: -1px; }                              /* spans the row + row border */
+.cp-seg-top  { top: 50%; bottom: -1px; border-radius: 4px 4px 0 0; } /* trip end: line continues downward */
+.cp-seg-bot  { top: 0; bottom: 50%; border-radius: 0 0 4px 4px; }    /* trip start: line ends at center */
+.cp-seg-dot  { top: 50%; height: 0; }                               /* single-row trip: node only */
+.cp-node { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; border-radius: 50%; background: var(--c); transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--md-sys-color-surface-container-low); }
+
 /* ---- trip builder (checkpoints) ---- */
 .trip-banner {
   display: flex;
